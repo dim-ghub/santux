@@ -1,0 +1,7 @@
+# Build-only environment for ./build.sh. The PySide6 wheel carries its own Qt, so the binary
+# doesn't depend on (or pick up plugins from) the system's Qt.
+pyinstaller>=6.16
+PySide6-Essentials>=6.12
+numpy
+lxml
+cryptography

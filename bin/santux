@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Run Santux from this checkout. With no arguments it opens the app;
+# "santux --help" lists the command-line commands.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+if [ "${1:-}" = launch ]; then
+    # Started by Steam as a launch option: keep Steam's preload/library paths for the game,
+    # but don't let them leak into Python and Qt.
+    export SANTUX_SAVED_LD_PRELOAD="${LD_PRELOAD-__unset__}" SANTUX_SAVED_LD_LIBRARY_PATH="${LD_LIBRARY_PATH-__unset__}"
+    unset LD_PRELOAD LD_LIBRARY_PATH
+fi
+export PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m santux "$@"
