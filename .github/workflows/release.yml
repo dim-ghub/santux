@@ -1,0 +1,73 @@
+# Publishes a GitHub release for every pushed tag, with:
+#   - the merged pull requests and new contributors since the previous tag (GitHub's generated notes)
+#   - every commit since the previous tag
+#   - a source archive of the tag
+#   - the single-file Linux binary built by ./build.sh
+# Tags containing a hyphen (v1.2.0-rc1) are published as pre-releases.
+name: Release
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # The oldest supported Ubuntu, so the binary runs on systems with an older glibc.
+    runs-on: ubuntu-22.04
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history and tags, for the commit list
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build the binary
+        run: |
+          ./build.sh
+          mkdir -p out
+          cp dist/santux "out/santux-$TAG-x86_64-linux"
+
+      - name: Check the binary starts
+        run: |
+          "out/santux-$TAG-x86_64-linux" --help
+
+      - name: Archive the tag
+        run: |
+          git archive --format=tar.gz --prefix="santux-$TAG/" -o "out/santux-$TAG-source.tar.gz" "$TAG"
+          (cd out && sha256sum * > SHA256SUMS)
+
+      - name: Write the release notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          # Pull requests, new contributors and the compare link, as GitHub writes them.
+          args=(-f tag_name="$TAG" -f target_commitish="$GITHUB_SHA")
+          [ -n "$prev" ] && args+=(-f previous_tag_name="$prev")
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" "${args[@]}" --jq .body > notes.md
+          {
+            echo
+            echo "## Commits"
+            echo
+            git log --no-merges --reverse --format="- %s (%h) by %an" "${prev:+$prev..}$TAG"
+            echo
+            echo "## Downloads"
+            echo
+            echo "- \`santux-$TAG-x86_64-linux\`: the app as one executable. \`chmod +x\` it and run it, or put it in \`~/.local/bin/santux\`."
+            echo "- \`santux-$TAG-source.tar.gz\`: the source at this tag."
+            echo "- \`SHA256SUMS\`: checksums for both."
+          } >> notes.md
+          cat notes.md
+
+      - name: Publish the release
+        run: |
+          pre=()
+          [[ "$TAG" == *-* ]] && pre=(--prerelease)
+          gh release create "$TAG" out/* --title "Santux $TAG" --notes-file notes.md --verify-tag "${pre[@]}"
