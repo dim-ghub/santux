@@ -4,6 +4,7 @@ import http.cookiejar
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
@@ -69,6 +70,27 @@ class HttpError(Exception):
     pass
 
 
+# Where distributions keep their CA bundle (Debian/Ubuntu/Arch, Fedora, openSUSE, others).
+CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+              "/etc/ssl/ca-bundle.pem", "/etc/ssl/cert.pem")
+
+
+def ssl_context():
+    """TLS context using the system's CA certificates. The single binary carries an OpenSSL built
+    on Ubuntu, whose default certificate paths don't exist on every distribution; certifi (bundled
+    with the binary) is the fallback when no system bundle is found."""
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        return ssl.create_default_context()
+    cafile = next((p for p in CA_BUNDLES if os.path.isfile(p)), None)
+    if cafile is None:
+        try:
+            import certifi
+            cafile = certifi.where()
+        except ImportError:
+            pass
+    return ssl.create_default_context(cafile=cafile)
+
+
 class Http:
     """urllib wrapper with a per-host minimum interval and 429 back-off.
 
@@ -81,7 +103,8 @@ class Http:
         self._last = {}
         self._lock = threading.Lock()
         self.cookies = http.cookiejar.CookieJar()
-        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
+        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies),
+                                                   urllib.request.HTTPSHandler(context=ssl_context()))
 
     def _wait(self, host):
         gap = self.min_interval.get(host)

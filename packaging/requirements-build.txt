@@ -5,3 +5,4 @@ PySide6-Essentials>=6.12
 numpy
 lxml
 cryptography
+certifi
