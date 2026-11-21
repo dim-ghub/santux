@@ -1,5 +1,7 @@
 """Higher-level flows shared by the GUI and the CLI."""
+import os
 import re
+import shutil
 from pathlib import Path
 
 from . import deps, gta5mods, installer, util
@@ -19,23 +21,63 @@ def download_mod_file(details, mod_file, progress=None, log=print, cancel=None):
     return dest
 
 
+LOOSE = (".oiv", ".asi", ".dll", ".cs", ".vb", ".rpf")
+ARCHIVES = (".zip", ".7z", ".rar")
+
+
+def _work_dir(key):
+    root = util.cache_dir() / "extract" / re.sub(r"\W+", "-", key)
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    return root
+
+
+def _place(src: Path, root: Path):
+    dest = root / (src.parent.name if src.name.lower() == "dlc.rpf" else "") / src.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    installer.link_or_copy(src, dest)
+
+
 def prepare(archive: Path, game, key=None, title=""):
     """Extract an archive (or use a folder / single file as-is) and analyse it."""
     if archive.is_dir():
         root = archive
-    elif archive.suffix.lower() in (".oiv", ".asi", ".dll", ".cs", ".vb", ".rpf"):
-        root = util.cache_dir() / "extract" / re.sub(r"\W+", "-", key or archive.stem)
-        if root.exists():
-            import shutil
-            shutil.rmtree(root)
-        root.mkdir(parents=True)
-        import shutil
-        dest = root / (archive.parent.name if archive.name.lower() == "dlc.rpf" else "") / archive.name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(archive, dest)
+    elif archive.suffix.lower() in LOOSE:
+        root = _work_dir(key or archive.stem)
+        _place(archive, root)
     else:
         root = util.extract(archive, util.cache_dir() / "extract" / re.sub(r"\W+", "-", key or archive.stem))
     return installer.analyse(root, game, title)
+
+
+def prepare_many(paths, game, title):
+    """Several files opened together (e.g. the parts of a multi-part .oiv mod), as one plan.
+    Archives among them are unpacked next to the loose files."""
+    root = _work_dir(title)
+    for p in paths:
+        if p.is_dir():
+            shutil.copytree(p, root / p.name, copy_function=installer.link_or_copy, dirs_exist_ok=True)
+        elif p.suffix.lower() in ARCHIVES:
+            util.extract(p, root / p.stem)
+        else:
+            _place(p, root)
+    return installer.analyse(root, game, title)
+
+
+def package_title(paths):
+    """A name for opened files: the .oiv's own name for a single package, else the file or folder."""
+    if len(paths) == 1 and paths[0].suffix.lower() == ".oiv":
+        try:
+            return installer.oiv_name(paths[0]) or paths[0].stem
+        except Exception:
+            return paths[0].stem
+    if len(paths) == 1:
+        return paths[0].stem if paths[0].is_file() else paths[0].name
+    # "1. Liberty City Installer - Part ONE" + "2. ... Part TWO" -> "Liberty City Installer"
+    stems = [re.sub(r"^\s*\d+\s*[.)_-]?\s*", "", p.stem) for p in paths]
+    prefix = re.sub(r"[\s_-]*(part|pt|vol)?[\s.]*$", "", os.path.commonprefix(stems), flags=re.I).strip(" -_.")
+    return prefix or f"{paths[0].stem} and {len(paths) - 1} more"
 
 
 def missing_for_plan(game, plan):

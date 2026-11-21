@@ -23,9 +23,10 @@ Item {
 
     FileDialog {
         id: fileDialog
-        title: "Choose a mod archive, .oiv or .asi"
+        title: "Choose a mod archive, .oiv packages or .asi"
+        fileMode: FileDialog.OpenFiles     // several .oiv parts of one mod become one install
         nameFilters: ["Mods (*.zip *.7z *.rar *.oiv *.asi *.dll *.rpf)", "All files (*)"]
-        onAccepted: backend.installLocal(selectedFile.toString())
+        onAccepted: backend.openPaths(selectedFiles.map(function (u) { return u.toString() }))
     }
 
     Scroller {

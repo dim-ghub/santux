@@ -219,12 +219,31 @@ class Backend(QObject):
 
     @Slot(str)
     def installLocal(self, path):
+        self.openPaths([path])
+
+    @Slot("QVariantList")
+    def openPaths(self, paths):
+        """Files or folders opened from the file manager, the command line or the app: one archive,
+        .oiv package or folder, or several files (the parts of a multi-part mod) as one plan."""
         if not self._game:
             return
-        p = Path(QUrl(path).toLocalFile() if path.startswith("file:") else path)
+        ps = [Path(QUrl(p).toLocalFile() if str(p).startswith("file:") else str(p)) for p in paths]
+        ps = [p for p in ps if p.exists()]
+        if not ps:
+            self.toast.emit("Nothing to open.")
+            return
         game = self._game
-        self._run_task(f"Opening {p.name}", lambda log, st, pr: actions.prepare(p, game, title=p.stem),
-                       on_done=lambda plan: self._offer_plan(plan, p.stem, "", str(p)),
+        title = actions.package_title(ps)
+
+        def work(log, status, progress):
+            status("Unpacking…" if any(p.suffix.lower() in actions.ARCHIVES for p in ps) else "Reading…")
+            if len(ps) == 1:
+                return actions.prepare(ps[0], game, title=title)
+            return actions.prepare_many(ps, game, title)
+
+        source = str(ps[0]) if len(ps) == 1 else ""
+        self._run_task(f"Opening {ps[0].name if len(ps) == 1 else title}", work,
+                       on_done=lambda plan: self._offer_plan(plan, title, "", source),
                        success="Ready to install.")
 
     def _offer_plan(self, plan, title, version, source, author=""):
@@ -250,12 +269,13 @@ class Backend(QObject):
         })
 
     @Slot("QVariantList", bool)
-    def commitPlan(self, checked, install_reqs):
+    def commitPlan(self, order, install_reqs):
+        """order: indexes into the plan's .oiv list, in the order to install them (unticked ones left out)."""
         if not self._plan:
             return
         plan, title, version, source, author = self._plan
         self._plan = None
-        oivs = [p for p, on in zip(plan.oivs, checked) if on] if plan.oivs else []
+        oivs = [plan.oivs[int(i)] for i in order] if plan.oivs else []
         game = self._game
         reqs = actions.missing_for_plan(game, plan) if install_reqs else []
 

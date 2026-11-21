@@ -7,6 +7,7 @@ deletes those files and re-applies the remaining packages that touch them. Loose
 plugins, ScriptHookVDotNet scripts, Menyoo data) are copied directly.
 """
 import json
+import os
 import re
 import shutil
 import time
@@ -234,6 +235,19 @@ def _is_shvdn_assembly(p: Path):
     return b"ScriptHookVDotNet" in data or b"S\x00c\x00r\x00i\x00p\x00t\x00H\x00o\x00o\x00k\x00V\x00D\x00o\x00t\x00N\x00e\x00t" in data
 
 
+def natural_key(p):
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(p))]
+
+
+def link_or_copy(src: Path, dest: Path):
+    """Hard-link when src and dest share a filesystem (multi-GB packages), otherwise copy."""
+    dest.unlink(missing_ok=True)
+    try:
+        os.link(src, dest)
+    except OSError:
+        shutil.copy2(src, dest)
+
+
 def _other_framework_files(files, root):
     """{file: reason} for files built for another platform or another ScriptHookVDotNet version."""
     out = {}
@@ -292,7 +306,9 @@ def _oiv_score(p: Path, game):
 def analyse(root: Path, game, title="") -> Plan:
     plan = Plan(root)
     files = [p for p in root.rglob("*") if p.is_file()]
-    plan.oivs = sorted((p for p in files if p.suffix.lower() in (".oiv",)), key=str)
+    # Natural order, so "2. Part TWO" comes before "10. Part TEN": multi-part packages are usually
+    # numbered in the order they must be installed.
+    plan.oivs = sorted((p for p in files if p.suffix.lower() in (".oiv",)), key=natural_key)
     if plan.oivs:
         scored = sorted(((_oiv_score(p, game), p) for p in plan.oivs), key=lambda t: -t[0])
         best = scored[0][0]
@@ -456,7 +472,7 @@ def install(game, plan: Plan, title, version="", source="", author="", oivs=None
             for i, src in enumerate(packages):
                 pkg = oivmod.Package.load(src)
                 kept = store / f"{mod.id}-{i}.oiv"
-                shutil.copy2(src, kept)
+                link_or_copy(src, kept)
                 log(f"== {pkg.name} {pkg.version}".rstrip())
                 rec = {"name": pkg.name, "file": kept.name, "targets": []}
                 mod.packages.append(rec)

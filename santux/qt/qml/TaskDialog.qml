@@ -27,13 +27,13 @@ Overlay {
         function onTaskLog(line) { log.append(line) }
         function onTaskStatus(s) { root.status = s }
         function onTaskProgress(p) { root.progress = p }
+        function onPlanReady(plan) { root.shown = false }     // the install plan takes over
         function onTaskFinished(ok, msg) {
             root.done = true; root.ok = ok; root.status = msg; root.progress = ok ? 1 : 0
-            if (root.quiet) {
-                if (ok) win.toast(msg); else { root.shown = true }
-            } else if (ok && root.title.indexOf("Getting ") === 0) {
-                root.shown = false     // the install plan takes over
-            }
+            if (root.quiet && ok)
+                win.toast(msg)
+            else if (!ok)
+                root.shown = true
         }
     }
 
