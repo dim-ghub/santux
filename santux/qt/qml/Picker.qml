@@ -3,24 +3,36 @@ import QtQuick.Layouts
 import QtQuick.Window
 
 // Shown when GTA V starts from Steam with "Ask every time": pick a profile and go.
+// Keys: ↑/↓ or 1–9 to choose, Enter to launch, Esc to cancel.
 Window {
     id: win
-    width: 520
-    height: Math.min(680, 250 + picker.profiles.length * 72)
+    readonly property int contentHeight: Math.ceil(body.implicitHeight) + 2 * pad
+    readonly property int pad: 24
+    width: 500
+    height: contentHeight
     // A fixed size: tiling compositors (Hyprland, Sway, ...) float windows that can't be resized.
-    minimumWidth: width
-    maximumWidth: width
-    minimumHeight: height
-    maximumHeight: height
+    minimumWidth: 500
+    maximumWidth: 500
+    minimumHeight: contentHeight
+    maximumHeight: contentHeight
     visible: true
     title: "Launch GTA V"
-    color: Theme.window
+    color: Theme.surfaceContainerLow
     flags: Qt.Dialog
 
     property int sel: Math.max(0, picker.profiles.findIndex(function (p) { return p.slug === picker.preselect }))
-    function go() { picker.choose(picker.profiles[sel].slug, remember.checked) }
+    readonly property var current: picker.profiles[sel] || ({})
+    function go() { picker.choose(current.slug, remember.checked) }
     function toast(m) {}
     property var active: ({})
+
+    function subtitle(p) {
+        if (p.kind === "modded")
+            return p.mods ? p.mods + " mod" + (p.mods === 1 ? "" : "s") + " installed" : "No mods yet"
+        if (p.kind === "vr")
+            return picker.steamvr ? "GTAVXR Suite · SteamVR is running" : "GTAVXR Suite · start SteamVR first"
+        return "The unmodified game"
+    }
 
     Item {
         anchors.fill: parent
@@ -30,63 +42,84 @@ Window {
         Keys.onReturnPressed: win.go()
         Keys.onEnterPressed: win.go()
         Keys.onEscapePressed: picker.cancel()
+        Keys.onPressed: function (e) {
+            var n = e.key - Qt.Key_1
+            if (n >= 0 && n < Math.min(9, picker.profiles.length)) { win.sel = n; e.accepted = true }
+        }
 
         ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 22
-            spacing: 14
+            id: body
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.margins: win.pad
+            spacing: 20
 
-            ColumnLayout {
-                spacing: 2
-                Text { text: "Launch GTA V"; color: Theme.text; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
-                Text { text: "Choose a profile."; color: Theme.subtle; font.pixelSize: Theme.fontBody }
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: banner.implicitHeight
+                Banner { id: banner; size: 34; anchors.horizontalCenter: parent.horizontalCenter }
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: -10
+                horizontalAlignment: Text.AlignHCenter
+                text: "Choose a profile to launch GTA V"
+                color: Theme.fgSurfaceVariant
+                font.pixelSize: 14
             }
 
-            ColumnLayout {
+            ListGroup {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 8
+                spacing: 0
                 Repeater {
                     model: picker.profiles
-                    delegate: Rectangle {
+                    delegate: ListRow {
+                        id: row
                         required property var modelData
                         required property int index
                         readonly property bool on: index === win.sel
-                        Layout.fillWidth: true
-                        implicitHeight: 60
-                        radius: Theme.radius
-                        color: on ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : m.containsMouse ? Theme.cardHover : Theme.card
-                        border.width: on ? 2 : 1
-                        border.color: on ? Theme.accent : Theme.border
-                        Icon {
-                            id: ic
-                            name: modelData.kind === "vanilla" ? "sports_esports" : modelData.kind === "vr" ? "view_in_ar" : "deployed_code"
-                            size: 24
-                            color: on ? Theme.primary : Theme.fgSurfaceVariant
-                            anchors.left: parent.left; anchors.leftMargin: 16; anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Column {
-                            anchors.left: ic.right; anchors.leftMargin: 14
-                            anchors.right: parent.right; anchors.rightMargin: 16
+                        title: modelData.name
+                        subtitle: win.subtitle(modelData)
+                        icon: modelData.kind === "vanilla" ? "sports_esports" : modelData.kind === "vr" ? "view_in_ar" : "deployed_code"
+                        iconFilled: on
+                        iconBg: on ? Theme.primary
+                              : modelData.kind === "vr" ? Theme.tertiaryContainer : Theme.surfaceContainerHighest
+                        iconColor: on ? Theme.fgPrimary
+                                 : modelData.kind === "vr" ? Theme.fgTertiaryContainer : Theme.fgSurfaceVariant
+                        tone: on ? Theme.secondaryContainer : Theme.surfaceContainerHigh
+                        clickable: true
+                        onClicked: win.sel = index
+                        TapHandler { onDoubleTapped: { win.sel = row.index; win.go() } }
+
+                        // M3 radio button
+                        Rectangle {
+                            width: 20; height: 20; radius: 10
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            Text { text: modelData.name; color: Theme.text; font.pixelSize: Theme.fontHeading; font.weight: Font.DemiBold }
-                            Text {
-                                width: parent.width; elide: Text.ElideRight
-                                text: modelData.kind === "modded" ? (modelData.mods ? modelData.mods + " mods: " + modelData.titles.join(", ") : "No mods yet")
-                                    : modelData.kind === "vr" ? (picker.steamvr ? "GTAVXR Suite · SteamVR is running" : "GTAVXR Suite · start SteamVR first")
-                                    : "The unmodified game"
-                                color: modelData.kind === "vr" && !picker.steamvr ? Theme.warning : Theme.subtle
-                                font.pixelSize: Theme.fontSmall + 1
+                            color: "transparent"
+                            border.width: 2
+                            border.color: row.on ? Theme.primary : Theme.fgSurfaceVariant
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: row.on ? 10 : 0; height: width; radius: width / 2
+                                color: Theme.primary
+                                Behavior on width { SpringAnimation { spring: 4; damping: 0.4 } }
                             }
                         }
-                        MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: win.sel = index; onDoubleClicked: { win.sel = index; win.go() } }
                     }
                 }
-                Item { Layout.fillHeight: true }
             }
 
-            Check { id: remember; Layout.fillWidth: true; text: "Always launch this profile (change it later in Santux)" }
+            ListGroup {
+                Layout.fillWidth: true
+                spacing: 0
+                ListRow {
+                    title: "Always launch this profile"
+                    subtitle: "Skip this window next time. Change it on Santux's Profiles page."
+                    icon: "bolt"
+                    clickable: true
+                    onClicked: remember.checked = !remember.checked
+                    Toggle { id: remember; anchors.verticalCenter: parent.verticalCenter }
+                }
+            }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -94,7 +127,7 @@ Window {
                 Btn { text: "Open Santux"; kind: "flat"; icon: "tune"; onClicked: picker.openManager() }
                 Item { Layout.fillWidth: true }
                 Btn { text: "Cancel"; onClicked: picker.cancel() }
-                Btn { text: "Launch"; kind: "accent"; icon: "play_arrow"; onClicked: win.go() }
+                Btn { text: "Launch " + (win.current.name || ""); kind: "accent"; icon: "play_arrow"; onClicked: win.go() }
             }
         }
     }
