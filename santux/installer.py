@@ -23,6 +23,18 @@ SKIP_ROOT = {"dinput8.dll", "xinput1_4.dll", "scripthookv.dll", "dsound.dll", "v
              "winmm.dll", "args.txt", "gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}
 DOC_EXT = {".txt", ".md", ".pdf", ".url", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".html", ".rtf", ".docx"}
 
+# Libraries such as LemonUI ship one folder per framework. Folders for other platforms are never
+# for single-player ScriptHookVDotNet; among ScriptHookVDotNet builds, v3 is the one we install.
+OTHER_PLATFORMS = (
+    (re.compile(r"^fivem$|^cfx"), "FiveM"),
+    (re.compile(r"^rage ?mp$"), "RageMP"),
+    (re.compile(r"^alt ?v$|^altv[ ._-]"), "alt:V"),
+    (re.compile(r"^rph$|^rage ?plugin ?hook$"), "RagePluginHook"),
+    (re.compile(r"^for developers$|^nuget$|^developers?$"), "developers"),
+)
+SHVDN_BUILD = re.compile(r"^(?:shvdn|scripthookvdotnet|script ?hook ?v ?dot ?net) ?[-_ ]?(v?\d|c|community)$")
+PREFERRED_SHVDN = re.compile(r"(?:^|[^\d])3$")
+
 
 class InstallError(Exception):
     pass
@@ -222,6 +234,36 @@ def _is_shvdn_assembly(p: Path):
     return b"ScriptHookVDotNet" in data or b"S\x00c\x00r\x00i\x00p\x00t\x00H\x00o\x00o\x00k\x00V\x00D\x00o\x00t\x00N\x00e\x00t" in data
 
 
+def _other_framework_files(files, root):
+    """{file: reason} for files built for another platform or another ScriptHookVDotNet version."""
+    out = {}
+    shvdn_dirs = {}                                   # (parent parts) -> {folder name, ...}
+    for p in files:
+        parts = p.relative_to(root).parts[:-1]
+        if p.suffix.lower() == ".nupkg":
+            out[p] = "developer package (NuGet)"
+            continue
+        for i, d in enumerate(parts):
+            name = d.lower()
+            hit = next((label for rx, label in OTHER_PLATFORMS if rx.search(name)), None)
+            if hit:
+                out[p] = f"for {hit}, not single-player ScriptHookVDotNet"
+                break
+            if SHVDN_BUILD.search(name):
+                shvdn_dirs.setdefault(parts[:i], set()).add(d)
+    # Several ScriptHookVDotNet builds side by side: keep the v3 one.
+    for parent, names in shvdn_dirs.items():
+        keep = {n for n in names if PREFERRED_SHVDN.search(n.lower())}
+        if len(names) < 2 or not keep:
+            continue
+        for p in files:
+            parts = p.relative_to(root).parts
+            if p not in out and parts[:len(parent)] == parent and len(parts) > len(parent) + 1 \
+                    and parts[len(parent)] in names - keep:
+                out[p] = f"built for a different ScriptHookVDotNet version than {sorted(keep)[0]}"
+    return out
+
+
 def _oiv_score(p: Path, game):
     s = str(p).lower()
     score = 0
@@ -272,6 +314,12 @@ def analyse(root: Path, game, title="") -> Plan:
 
     def rel(p):
         return p.relative_to(root).as_posix()
+
+    for p, why in _other_framework_files(files, root).items():
+        if p not in handled:
+            handled.add(p)
+            if p.suffix.lower() not in DOC_EXT:
+                plan.skipped.append((rel(p), why))
 
     # Packages with .oiv files often ship extras (ENB/ReShade presets, alternative plugins) in
     # "optional" folders. Those are left for the user to pick by hand.
