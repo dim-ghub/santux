@@ -1,4 +1,5 @@
 """Qt Quick interface. Colours come from the system Qt palette; every control is our own QML."""
+import json
 import os
 import sys
 from pathlib import Path
@@ -17,9 +18,55 @@ def _brand(app):
         QFontDatabase.addApplicationFont(str(DATA_DIR / "fonts" / f))
 
 
-def run():
+def _socket_name():
+    return f"santux-{os.getuid()}"
+
+
+def _forward(paths):
+    """Hand paths to a Santux window that's already open (it raises itself). True if one took them."""
+    from PySide6.QtNetwork import QLocalSocket
+    s = QLocalSocket()
+    s.connectToServer(_socket_name())
+    if not s.waitForConnected(500):
+        return False
+    s.write(json.dumps(paths).encode())
+    s.waitForBytesWritten(2000)
+    s.disconnectFromServer()
+    return True
+
+
+def _listen(app, engine, backend):
+    """Accept paths from later `santux FILE...` runs, so opening a .oiv reuses this window."""
+    from PySide6.QtNetwork import QLocalServer
+    server = QLocalServer(app)
+    QLocalServer.removeServer(_socket_name())        # a stale socket left by a crash
+    if not server.listen(_socket_name()):
+        return None
+
+    def accept():
+        sock = server.nextPendingConnection()
+        buf = bytearray()
+        sock.readyRead.connect(lambda: buf.extend(bytes(sock.readAll())))
+
+        def done():
+            buf.extend(bytes(sock.readAll()))
+            try:
+                paths = json.loads(buf.decode() or "[]")
+            except ValueError:
+                paths = []
+            win = engine.rootObjects()[0]
+            win.show(); win.raise_(); win.requestActivate()
+            if paths:
+                backend.openPaths(paths)
+            sock.deleteLater()
+        sock.disconnected.connect(done)
+    server.newConnection.connect(accept)
+    return server
+
+
+def run(open_paths=None):
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")   # only used for scroll bars and popups
-    from PySide6.QtCore import QCoreApplication, Qt
+    from PySide6.QtCore import QCoreApplication, QTimer
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
     from .backend import Backend
@@ -30,6 +77,9 @@ def run():
     QCoreApplication.setApplicationName(APP_NAME)
     QGuiApplication.setDesktopFileName("io.github.santux")
     app = QGuiApplication(sys.argv[:1])
+    testing = bool(os.environ.get("SANTUX_SCREENSHOT"))
+    if not testing and _forward(open_paths or []):
+        return 0
     _brand(app)
     engine = QQmlApplicationEngine()
     backend = Backend()
@@ -41,8 +91,11 @@ def run():
     engine.load(QML_DIR / "Main.qml")
     if not engine.rootObjects():
         return 1
-    app._keep = (engine, backend, scheme)
+    server = None if testing else _listen(app, engine, backend)
+    app._keep = (engine, backend, scheme, server)
     _scrub_env()
+    if open_paths:
+        QTimer.singleShot(0, lambda: backend.openPaths(open_paths))
     _screenshot_and_quit(app, engine)
     return app.exec()
 
@@ -58,7 +111,8 @@ def _scrub_env():
 
 
 def _screenshot_and_quit(app, engine):
-    """SANTUX_SCREENSHOT=file.png: save the window a few seconds after start, then quit (for testing builds)."""
+    """SANTUX_SCREENSHOT=file.png: save the window a few seconds after start (SANTUX_SCREENSHOT_DELAY ms,
+    default 4000), then quit. For testing builds."""
     out = os.environ.get("SANTUX_SCREENSHOT")
     if not out:
         return
@@ -67,7 +121,7 @@ def _screenshot_and_quit(app, engine):
     def grab():
         engine.rootObjects()[0].grabWindow().save(out)
         app.quit()
-    QTimer.singleShot(4000, grab)
+    QTimer.singleShot(int(os.environ.get("SANTUX_SCREENSHOT_DELAY", "4000")), grab)
 
 
 def run_picker(appid=None):

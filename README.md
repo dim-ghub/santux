@@ -12,6 +12,8 @@
 - **Browse and install** mods from [gta5-mods.com](https://www.gta5-mods.com), with a preview of
   what each archive will install. Downloads are checked against the site's SHA-256.
 - **Native .oiv support**, no OpenIV or Wine needed. Original game files are never modified.
+  Open `.oiv` files and mod archives straight from your file manager; for mods split into several
+  packages, set the order they install in.
 - **Mod profiles** you can switch between instantly, plus built-in **Vanilla** and **GTAVXR** (VR).
 - **Launch from Steam** with a small profile picker, or straight into a chosen profile.
 - **One-click requirements:** Script Hook V, ScriptHookVDotNet, a mods folder loader, .NET 4.8 and
