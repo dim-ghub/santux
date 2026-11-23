@@ -58,13 +58,88 @@ Overlay {
                 width: parent.width
                 spacing: 18
 
-                Text {
+                ColumnLayout {
                     visible: root.plan.empty === true
                     Layout.fillWidth: true
+                    spacing: 10
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Theme.warning
+                        font.pixelSize: Theme.fontBody
+                        text: root.plan.aiUsed
+                            ? "Gemini AI could not find safe automatic install steps for this mod. Review the notes below or open the files to install manually."
+                            : "No .oiv package, add-on DLC, .asi plugin or script was found in this archive. You can ask Gemini AI to read the mod's description and text files and build an .oiv package, or open its files to install manually."
+                    }
+                    RowLayout {
+                        visible: !root.plan.aiUsed
+                        spacing: 10
+                        Btn {
+                            visible: backend.geminiConfigured
+                            text: "Convert with Gemini AI"
+                            icon: "auto_awesome"
+                            kind: "tonal"
+                            enabled: !backend.busy
+                            onClicked: {
+                                root.shown = false
+                                backend.convertPlanWithAi()
+                            }
+                        }
+                        Btn {
+                            visible: !backend.geminiConfigured
+                            text: "Set up free Gemini AI…"
+                            icon: "auto_awesome"
+                            kind: "tonal"
+                            onClicked: {
+                                root.dismissed()
+                                win.go(5)
+                            }
+                        }
+                        Btn {
+                            text: "Open files"
+                            icon: "folder_open"
+                            kind: "normal"
+                            onClicked: backend.openPath(root.plan.root)
+                        }
+                    }
+                }
+
+                Text {
+                    visible: (root.plan.aiError || "") !== ""
+                    Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: Theme.warning
-                    font.pixelSize: Theme.fontBody
-                    text: "No .oiv package, add-on DLC, .asi plugin or script was found in this archive. Open its files and follow the mod's own instructions."
+                    color: Theme.error
+                    font.pixelSize: Theme.fontSmall + 1
+                    text: "Gemini AI error: " + (root.plan.aiError || "")
+                }
+
+                Section {
+                    visible: root.plan.aiUsed === true
+                    Layout.fillWidth: true
+                    title: "AI install plan (Gemini)"
+                    description: root.plan.aiSummary || "Generated from the mod's description and text files."
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.margins: Theme.pad
+                        spacing: 10
+                        Text {
+                            visible: (root.plan.aiSteps || []).length > 0
+                            Layout.fillWidth: true
+                            text: (root.plan.aiSteps || []).join("\n")
+                            color: Theme.text
+                            font.family: "monospace"
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        Text {
+                            visible: (root.plan.aiWarnings || []).length > 0
+                            Layout.fillWidth: true
+                            text: "Notes:\n• " + (root.plan.aiWarnings || []).join("\n• ")
+                            color: Theme.warning
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.Wrap
+                        }
+                    }
                 }
 
                 Section {
@@ -222,6 +297,17 @@ Overlay {
 
         RowLayout {
             Layout.fillWidth: true
+            Btn {
+                visible: !root.plan.aiUsed && !root.plan.empty && (root.plan.skippedCount || 0) > 0 && backend.geminiConfigured
+                text: "Ask Gemini AI"
+                icon: "auto_awesome"
+                kind: "tonal"
+                enabled: !backend.busy
+                onClicked: {
+                    root.shown = false
+                    backend.convertPlanWithAi()
+                }
+            }
             Item { Layout.fillWidth: true }
             Btn { text: "Cancel"; onClicked: root.dismissed() }
             Btn {

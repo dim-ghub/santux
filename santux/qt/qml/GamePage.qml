@@ -5,7 +5,27 @@ Item {
     id: root
     property int tick: 0
     property var info: backend.gameInfo
+    property bool aiTesting: false
+    property string aiTestMsg: ""
+    property bool aiTestOk: false
     onTickChanged: info = backend.gameInfo
+    Component.onCompleted: if (backend.geminiConfigured) backend.refreshGeminiModels("")
+
+    function modelIndex() {
+        var list = backend.geminiModels || []
+        var cur = backend.geminiModel || ""
+        for (var i = 0; i < list.length; i++) if (list[i].key === cur) return i
+        return 0
+    }
+
+    Connections {
+        target: backend
+        function onGeminiTestFinished(ok, msg) {
+            root.aiTesting = false
+            root.aiTestOk = ok
+            root.aiTestMsg = msg
+        }
+    }
 
     Scroller {
         anchors.fill: parent
@@ -15,7 +35,7 @@ Item {
             width: parent.width
             spacing: 28
 
-            PageHeader { title: "Game"; subtitle: "Where GTA V and its Proton prefix live, and prefix maintenance." }
+            PageHeader { title: "Settings"; subtitle: "Game locations, Proton prefix maintenance, and AI installer settings." }
 
             // ---- hero
             Rectangle {
@@ -80,6 +100,107 @@ Item {
                     title: "Prepare the prefix"
                     subtitle: "Back up the prefix registry, then install the VC++ 2015–2022 runtime and .NET Framework 4.8 (10–20 minutes)."
                     Btn { anchors.verticalCenter: parent.verticalCenter; text: "Prepare"; kind: "tonal"; compact: true; enabled: !backend.busy; onClicked: backend.preparePrefix() }
+                }
+            }
+
+            ListGroup {
+                Layout.fillWidth: true
+                title: "AI installer (Gemini)"
+                ListRow {
+                    icon: "auto_awesome"
+                    title: "Gemini API key"
+                    subtitle: backend.geminiConfigured
+                        ? "Configured. Converts mods with written instructions into installable .oiv packages."
+                        : "Optional. Add a free Google AI Studio key so Santux can read mod instructions and install non-.oiv mods."
+                    expanded: true
+                    Btn {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Get free key"
+                        icon: "open_in_new"
+                        kind: "flat"
+                        compact: true
+                        onClicked: backend.openUrl("https://aistudio.google.com/apikey")
+                    }
+                    detail: ColumnLayout {
+                        width: parent.width
+                        spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Field {
+                                id: apiKeyField
+                                Layout.fillWidth: true
+                                icon: "key"
+                                secret: true
+                                placeholder: "AIza… (or set GEMINI_API_KEY in environment)"
+                                text: backend.geminiApiKey
+                                onAccepted: {
+                                    backend.setGeminiApiKey(text)
+                                    win.toast("Gemini API key saved.")
+                                }
+                            }
+                            Btn {
+                                text: "Save"
+                                kind: "accent"
+                                compact: true
+                                onClicked: {
+                                    backend.setGeminiApiKey(apiKeyField.text)
+                                    win.toast("Gemini API key saved.")
+                                }
+                            }
+                            Btn {
+                                text: root.aiTesting ? "Testing…" : "Test"
+                                kind: "tonal"
+                                compact: true
+                                enabled: !root.aiTesting
+                                onClicked: {
+                                    backend.setGeminiApiKey(apiKeyField.text)
+                                    root.aiTesting = true
+                                    root.aiTestMsg = ""
+                                    backend.testGemini(apiKeyField.text, backend.geminiModel)
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Dropdown {
+                                id: modelDrop
+                                icon: "smart_toy"
+                                openUp: true
+                                model: backend.geminiModels
+                                currentIndex: root.modelIndex()
+                                onActivated: function (i) {
+                                    var list = backend.geminiModels || []
+                                    if (i >= 0 && i < list.length) backend.setGeminiModel(list[i].key)
+                                }
+                            }
+                            IconBtn {
+                                icon: "refresh"
+                                enabled: !backend.geminiModelsLoading && (backend.geminiConfigured || apiKeyField.text.trim() !== "")
+                                opacity: enabled ? 1 : 0.4
+                                onClicked: backend.refreshGeminiModels(apiKeyField.text)
+                            }
+                            Text {
+                                visible: backend.geminiModelsLoading || root.aiTestMsg !== ""
+                                text: backend.geminiModelsLoading ? "Loading available models…" : root.aiTestMsg
+                                color: backend.geminiModelsLoading ? Theme.subtle : (root.aiTestOk ? Theme.ok : Theme.error)
+                                font.pixelSize: Theme.fontSmall + 1
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+                ListRow {
+                    icon: "tune"
+                    title: "Auto-convert unrecognized mods"
+                    subtitle: "Automatically ask Gemini when a mod archive has no .oiv, add-on DLC, .asi or scripts. You still review the plan before installing."
+                    Toggle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: backend.geminiAuto
+                        onToggled: backend.setGeminiAuto(checked)
+                    }
                 }
             }
 

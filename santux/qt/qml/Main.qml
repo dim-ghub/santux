@@ -114,7 +114,7 @@ Window {
                 NavItem { Layout.fillWidth: true; text: "Profiles"; icon: "switch_account"; active: win.page === 2; onClicked: win.go(2) }
                 NavItem { Layout.fillWidth: true; text: "Requirements"; icon: "build"; active: win.page === 3; onClicked: win.go(3) }
                 NavItem { Layout.fillWidth: true; text: "VR (GTAVXR)"; icon: "view_in_ar"; active: win.page === 4; onClicked: win.go(4) }
-                NavItem { Layout.fillWidth: true; text: "Game"; icon: "sports_esports"; active: win.page === 5; onClicked: win.go(5) }
+                NavItem { Layout.fillWidth: true; text: "Settings"; icon: "settings"; active: win.page === 5; onClicked: win.go(5) }
 
                 Item { Layout.fillHeight: true }
 
