@@ -43,11 +43,11 @@ def prepare(archive: Path, game, key=None, title=""):
     """Extract an archive (or use a folder / single file as-is) and analyse it."""
     if archive.is_dir():
         root = archive
-    elif archive.suffix.lower() in LOOSE:
+    elif archive.suffix.lower() in ARCHIVES:
+        root = util.extract(archive, util.cache_dir() / "extract" / re.sub(r"\W+", "-", key or archive.stem))
+    else:
         root = _work_dir(key or archive.stem)
         _place(archive, root)
-    else:
-        root = util.extract(archive, util.cache_dir() / "extract" / re.sub(r"\W+", "-", key or archive.stem))
     return installer.analyse(root, game, title)
 
 

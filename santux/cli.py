@@ -3,7 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import actions, deps, game as gamemod, gta5mods, installer, profiles
+from . import actions, ai, deps, game as gamemod, gta5mods, installer, profiles
 
 
 def pick_game(edition):
@@ -34,6 +34,7 @@ def main(argv):
     n.add_argument("source")
     n.add_argument("--version", help="version label to download (default: current)")
     n.add_argument("--oiv", action="append", help="install only .oiv files whose path contains this (repeatable)")
+    n.add_argument("--ai", action="store_true", help="use Gemini AI to read instructions and build an .oiv package")
     n.add_argument("--dry-run", action="store_true")
     sub.add_parser("list", help="list installed mods (active profile and shared requirements)")
     pr = sub.add_parser("profiles", help="list profiles, or switch/create/delete with --use/--new/--delete")
@@ -97,7 +98,7 @@ def main(argv):
         installer.uninstall(g, a.id)
     elif a.cmd == "install":
         src = a.source
-        title, version = Path(src).stem, ""
+        title, version, author, description = Path(src).stem, "", "", ""
         if src.startswith("http"):
             d = gta5mods.details(src)
             f = next((x for x in d.files if x.label == a.version), None) if a.version else \
@@ -108,16 +109,26 @@ def main(argv):
                 sys.exit(f"No version {a.version}; have: " + ", ".join(x.label for x in d.files))
             print(f"{d.title}: file {f.label}")
             archive = actions.download_mod_file(d, f)
-            title, version, key = d.title, f.label, d.slug
+            title, version, author, description, key = d.title, f.label, d.author, d.description, d.slug
         else:
             archive, key = Path(src), None
         plan = actions.prepare(archive, g, key, title)
+        if a.ai or (plan.empty and not plan.oivs and ai.is_configured() and ai.auto_convert_enabled()):
+            res = ai.convert_mod(plan, g, title=title, version=version, author=author, description=description)
+            ai.apply_ai_result(plan, res)
+            if res.summary:
+                print(f"AI summary: {res.summary}")
+            for step in res.steps:
+                print(f"  [AI] {step}")
+            for w in res.warnings:
+                print(f"  [AI warning] {w}")
         oivs = plan.chosen_oivs
         if a.oiv:
             oivs = [p for p in plan.oivs if any(s.lower() in str(p.relative_to(plan.root)).lower() for s in a.oiv)]
         print("Packages found:")
         for p in plan.oivs:
-            print(f"  [{'x' if p in oivs else ' '}] {p.relative_to(plan.root)}")
+            label = p.relative_to(plan.root) if p.is_relative_to(plan.root) else f"AI-generated ({p.name})"
+            print(f"  [{'x' if p in oivs else ' '}] {label}")
         for rpf, pack in plan.addons:
             print(f"  add-on DLC: {pack}")
         for s, d_ in plan.copies:
@@ -131,5 +142,5 @@ def main(argv):
             return
         if not (oivs or plan.addons or plan.copies):
             sys.exit(f"Nothing to install automatically. Files are in {plan.root}")
-        installer.install(g, plan, title, version, src, oivs=oivs)
+        installer.install(g, plan, title, version, src, author=author, oivs=oivs)
         print("Installed.")
