@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 
 // M3 Expressive split button used as a selector: the leading segment shows the current choice,
 // the trailing segment (a chevron) opens the menu and becomes a circle while it's open.
@@ -11,6 +12,7 @@ Item {
     property string kind: "tonal"           // "tonal" | "accent"
     property string icon: ""
     property string actionText: ""
+    property bool openUp: false
     readonly property string currentKey: model.length ? model[Math.min(currentIndex, model.length - 1)].key : ""
     readonly property string currentLabel: model.length ? model[Math.min(currentIndex, model.length - 1)].label : ""
     signal activated(int index)
@@ -25,7 +27,24 @@ Item {
     implicitHeight: h
     implicitWidth: 20 + (icon ? 26 : 0) + Math.ceil(tm.advanceWidth) + 16 + 2 + trailW
 
-    function toggle() { menu.opened ? menu.close() : menu.open() }
+    function toggle() {
+        if (menu.opened) {
+            menu.close()
+            return
+        }
+        var winItem = root.Window.contentItem
+        var pos = winItem ? root.mapToItem(winItem, 0, 0) : Qt.point(0, 0)
+        var winH = winItem ? winItem.height : 800
+        var winW = winItem ? winItem.width : 1200
+        var menuH = menu.implicitHeight
+        var up = root.openUp || (pos.y + root.height + 4 + menuH > winH - 12 && pos.y - 4 >= menuH)
+        var alignLeft = pos.x + menu.width <= winW - 12
+        menu.x = alignLeft ? 0 : (root.width - menu.width)
+        menu.y = up ? (-menuH - 4) : (root.height + 4)
+        menu.transformOrigin = up ? (alignLeft ? Item.BottomLeft : Item.BottomRight)
+                                  : (alignLeft ? Item.TopLeft : Item.TopRight)
+        menu.open()
+    }
 
     // ---- leading segment
     Rectangle {

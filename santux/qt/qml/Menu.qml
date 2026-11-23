@@ -19,8 +19,8 @@ C.Popup {
     }
     FontMetrics { id: fm; font.pixelSize: 15; font.weight: Font.DemiBold }
     readonly property bool anyIcon: selectable || items.some(function (it) { return !!it.icon })
-    width: Math.max(160, Math.min(320, maxLabel + (anyIcon ? 36 : 0) + 56))
-    implicitHeight: col.implicitHeight + 16
+    width: Math.max(160, Math.min(360, maxLabel + (anyIcon ? 36 : 0) + 56))
+    implicitHeight: Math.min(360, col.implicitHeight + 16)
 
     enter: Transition {
         NumberAnimation { property: "scale"; from: 0.85; to: 1; duration: Theme.medium; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
@@ -47,57 +47,67 @@ C.Popup {
         }
     }
 
-    contentItem: Column {
-        id: col
-        topPadding: 8
-        bottomPadding: 8
-        spacing: 2
-        Repeater {
-            model: root.items
-            delegate: Item {
-                required property var modelData
-                required property int index
-                width: root.width
-                height: 44
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.leftMargin: 4; anchors.rightMargin: 4
-                    radius: Theme.cornerM
-                    color: modelData.selected ? Theme.secondaryContainer : "transparent"
+    contentItem: Flickable {
+        clip: true
+        contentWidth: width
+        contentHeight: col.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        Column {
+            id: col
+            width: parent.width
+            topPadding: 8
+            bottomPadding: 8
+            spacing: 2
+            Repeater {
+                model: root.items
+                delegate: Item {
+                    required property var modelData
+                    required property int index
+                    width: root.width
+                    height: 44
                     Rectangle {
                         anchors.fill: parent
-                        radius: parent.radius
-                        color: modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurface
-                        opacity: m.pressed ? 0.12 : m.containsMouse ? 0.08 : 0
+                        anchors.leftMargin: 4; anchors.rightMargin: 4
+                        radius: Theme.cornerM
+                        color: modelData.selected ? Theme.secondaryContainer : "transparent"
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            color: modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurface
+                            opacity: m.pressed ? 0.12 : m.containsMouse ? 0.08 : 0
+                        }
                     }
-                }
-                Row {
-                    anchors.left: parent.left; anchors.leftMargin: 16
-                    anchors.right: parent.right; anchors.rightMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 12
-                    Icon {
-                        visible: root.anyIcon
-                        name: modelData.selected ? "check" : (modelData.icon || "")
-                        size: 20
-                        color: modelData.danger ? Theme.error : modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurfaceVariant
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 16
+                        anchors.right: parent.right; anchors.rightMargin: 16
                         anchors.verticalCenter: parent.verticalCenter
+                        spacing: 12
+                        Icon {
+                            visible: root.anyIcon
+                            name: modelData.selected ? "check" : (modelData.icon || "")
+                            size: 20
+                            color: modelData.danger ? Theme.error : modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurfaceVariant
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: modelData.label
+                            color: modelData.danger ? Theme.error : modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurface
+                            font.pixelSize: 15
+                            font.weight: modelData.selected ? Font.DemiBold : Font.Normal
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - (root.anyIcon ? 32 : 0)
+                            elide: Text.ElideRight
+                        }
                     }
-                    Text {
-                        text: modelData.label
-                        color: modelData.danger ? Theme.error : modelData.selected ? Theme.fgSecondaryContainer : Theme.fgSurface
-                        font.pixelSize: 15
-                        font.weight: modelData.selected ? Font.DemiBold : Font.Normal
-                        anchors.verticalCenter: parent.verticalCenter
-                        elide: Text.ElideRight
+                    MouseArea {
+                        id: m
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.close(); root.triggered(index) }
                     }
-                }
-                MouseArea {
-                    id: m
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: { root.close(); root.triggered(index) }
                 }
             }
         }

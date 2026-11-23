@@ -6,6 +6,7 @@ Rectangle {
     property alias text: input.text
     property string placeholder: ""
     property string icon: ""
+    property bool secret: false
     signal accepted()
 
     implicitHeight: 48
@@ -33,6 +34,7 @@ Rectangle {
         selectionColor: Theme.primary
         selectedTextColor: Theme.fgPrimary
         font.pixelSize: 15
+        echoMode: root.secret ? TextInput.Password : TextInput.Normal
         clip: true
         onAccepted: root.accepted()
         Text {
